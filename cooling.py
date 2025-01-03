@@ -5,12 +5,12 @@ import serial
 
 import minimalmodbus
 
-PORT_LIST = ['COM7', 'COM1', 'COM2', 'COM4', 'COM4', 'COM5', 'COM6', 'COM8', 'COM9']
+PORT_LIST = ['COM7', 'COM1', 'COM2', 'COM3', 'COM4', 'COM4', 'COM5', 'COM6', 'COM8', 'COM9']
 
 #LOGFILE_ROOT_DIR = 'c:/OpenHardwareMonitor'
 #CPU_TEMP_COLUMN_NAME = "/intelcpu/0/temperature/4"
 
-LOGFILE_ROOT_DIR = 'c:/HWiNFO'
+LOGFILE_ROOT_DIR = 'c:/Program Files/HWiNFO64'
 CPU_TEMP_COLUMN_NAME = "CPU Package [°C]"
 CLOCKS_COLUMN_NAME = "Core Clocks (avg) [MHz]"
 
@@ -18,15 +18,15 @@ MIN_VOLT = 500
 MAX_VOLT = 1200
 VOLT_RANGE = MAX_VOLT - MIN_VOLT
 MAX_TEMP = 100
-MIN_TEMP = 75
+MIN_TEMP = 55
 TEMP_RANGE = MAX_TEMP - MIN_TEMP
 
 
-CLOCKS_MAX_MHZ = 3890
+CLOCKS_MAX_MHZ = 0
 CLOCKS_THROTTLING_FACTOR = 0  # %% of CLOCKS_MAX_MHZ that would indicate throttling
-DOWN_STEP = 50
+#DOWN_STEP = 50
 UP_STEP = 50
-STAY_HIGH_MIN_DURATION = 2
+STAY_HIGH_MIN_DURATION = 1
 
 def get_instrument():
     connected = False
@@ -71,11 +71,12 @@ def get_last_values_from_csv(csv_file, column_names):
         columns = next(reader)
         data = list(reader)
         last_row = data[-1]
-        #value = last_row[columns.index(column_name)]
         values = [last_row[columns.index(column_name)] for column_name in column_names]
     return values
 
 def clocks_factor(clocks_value):
+    global CLOCKS_MAX_MHZ
+    CLOCKS_MAX_MHZ = max(CLOCKS_MAX_MHZ, clocks_value)
     return int(100 * clocks_value / CLOCKS_MAX_MHZ)
 
 def when_can_go_down_in(from_volt):
@@ -90,7 +91,6 @@ def main():
     while True:
         oldest_csv = find_oldest_csv(LOGFILE_ROOT_DIR)
         if oldest_csv:
-            #print (f"Looking into: {oldest_csv}")
             try:
                 temp_value, clocks_value = [int(float(value)) for value in get_last_values_from_csv(oldest_csv, [CPU_TEMP_COLUMN_NAME, CLOCKS_COLUMN_NAME])]
                 
@@ -106,10 +106,11 @@ def main():
                     if (target_volt_value > volt_value):
                         min_value = max(volt_value, MIN_VOLT)
                         volt_value = min_value + UP_STEP
+                    #volt_value = target_volt_value
                     can_go_down_in = when_can_go_down_in(target_volt_value)
                 else:
                     if (can_go_down_in <= 1):
-                        volt_value = volt_value - DOWN_STEP
+                        volt_value = target_volt_value
                         can_go_down_in = when_can_go_down_in(target_volt_value)
                     else:
                         can_go_down_in = can_go_down_in - 1
@@ -129,7 +130,7 @@ def main():
                 else:
                     target_direction_char = '→'
 
-                print(f"CPU: {temp_value: >3}°C  Clocks: {clocks_factor(clocks_value): >3}% | {volt_value/100: >4}V ({target_direction_char} {target_volt_value/100:4.1f}V {can_go_down_in: >2}s)")
+                print(f"CPU: {temp_value: >3}°C  Clocks: {clocks_factor(clocks_value): >3}% | {volt_value/100: >4.1f}v ({target_direction_char} {target_volt_value/100:4.1f}v {can_go_down_in: >2}s)")
                 try:
                     instrument.write_register(0, volt_value)
                 except Exception as e:
